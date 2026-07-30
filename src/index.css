@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 96%;
+
+    --card: 217 33% 14%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 217 33% 14%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 142 71% 45%;
+    --primary-foreground: 222 47% 6%;
+
+    --secondary: 217 33% 20%;
+    --secondary-foreground: 210 40% 90%;
+
+    --muted: 217 33% 18%;
+    --muted-foreground: 215 20% 55%;
+
+    --accent: 199 89% 48%;
+    --accent-foreground: 222 47% 6%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --ring: 142 71% 45%;
+
+    --radius: 0.75rem;
+
+    --neon-green: 142 71% 45%;
+    --neon-yellow: 45 93% 58%;
+    --neon-red: 0 84% 60%;
+    --neon-cyan: 199 89% 48%;
+    --neon-purple: 270 76% 60%;
+
+    --sidebar-background: 222 47% 8%;
+    --sidebar-foreground: 210 40% 90%;
+    --sidebar-primary: 142 71% 45%;
+    --sidebar-primary-foreground: 222 47% 6%;
+    --sidebar-accent: 217 33% 18%;
+    --sidebar-accent-foreground: 210 40% 90%;
+    --sidebar-border: 217 33% 22%;
+    --sidebar-ring: 142 71% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@keyframes pulse-neon {
+  0%, 100% { box-shadow: 0 0 5px hsl(0 84% 60% / 0.5), 0 0 20px hsl(0 84% 60% / 0.3); }
+  50% { box-shadow: 0 0 10px hsl(0 84% 60% / 0.8), 0 0 40px hsl(0 84% 60% / 0.5); }
+}
+
+.animate-pulse-attack {
+  animation: pulse-neon 1.5s ease-in-out infinite;
+  border-color: hsl(0 84% 60%) !important;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
