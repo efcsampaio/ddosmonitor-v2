@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { SummaryCards } from "@/components/SummaryCards";
-import { ASNCard, fetchRiskForAsn, type RiskData } from "@/components/ASNCard";
-import { InstabilityRanking } from "@/components/InstabilityRanking";
 import { AsnHistoryChart } from "@/components/AsnHistoryChart";
 import { TelegramSettings } from "@/components/TelegramSettings";
 import { ApiStatusMonitor } from "@/components/ApiStatusMonitor";
@@ -16,14 +14,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { motion, AnimatePresence } from "motion/react";
 
 import { useNetworkMonitor } from "@/hooks/useNetworkMonitor";
-import { useCompetitorMonitor, COMPETITOR_ASNS } from "@/hooks/useCompetitorMonitor";
 import { useAuthContext } from "@/App";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, RefreshCw, SearchX } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function EventosAlertasContent() {
@@ -134,31 +131,19 @@ function EventosAlertasContent() {
 const Index = () => {
   const { user, permissions } = useAuthContext();
 
-  const { dados, alertas, adicionarAsn, removerAsn, carregando, atualizar } = useNetworkMonitor();
-
-  const {
-    dados: competitorDados,
-    carregando: competitorCarregando,
-    atualizar: atualizarConcorrentes,
-  } = useCompetitorMonitor();
+  const { dados, alertas, adicionarAsn, carregando, atualizar } = useNetworkMonitor();
 
   const lastAlertIdRef = useRef<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [novoAsn, setNovoAsn] = useState("");
   const [adicionando, setAdicionando] = useState(false);
   const [atualizando, setAtualizando] = useState(false);
-
-  const [riskMap, setRiskMap] = useState<Record<string, RiskData>>({});
-  const [riskLoaded, setRiskLoaded] = useState(false);
-  const [competitorRiskMap, setCompetitorRiskMap] = useState<Record<string, RiskData>>({});
-  const [competitorRiskLoaded, setCompetitorRiskLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState("visao-geral");
 
   const handleAtualizar = async () => {
     setAtualizando(true);
     try {
       await atualizar();
-      loadAllRisks(dados.map(d => d.metrics.asn));
       toast.success("Dados atualizados");
     } catch {
       toast.error("Erro ao atualizar");
@@ -180,73 +165,6 @@ const Index = () => {
       toast.success(latest.mensagem);
     }
   }, [alertas]);
-
-  const loadAllRisks = async (asns: string[]) => {
-    const results = await Promise.all(
-      asns.map(async (asn) => {
-        const risk = await fetchRiskForAsn(asn);
-        return { asn, risk };
-      })
-    );
-    const map: Record<string, RiskData> = {};
-    for (const { asn, risk } of results) {
-      if (risk) map[asn] = risk;
-    }
-    setRiskMap(map);
-    setRiskLoaded(true);
-  };
-
-  useEffect(() => {
-    if (dados.length > 0 && !riskLoaded) {
-      loadAllRisks(dados.map(d => d.metrics.asn));
-    }
-  }, [dados, riskLoaded]);
-
-  useEffect(() => {
-    if (competitorDados.length > 0 && !competitorRiskLoaded) {
-      (async () => {
-        const results = await Promise.all(
-          competitorDados.map(async (d) => {
-            const risk = await fetchRiskForAsn(d.metrics.asn);
-            return { asn: d.metrics.asn, risk };
-          })
-        );
-        const map: Record<string, RiskData> = {};
-        for (const { asn, risk } of results) {
-          if (risk) map[asn] = risk;
-        }
-        setCompetitorRiskMap(map);
-        setCompetitorRiskLoaded(true);
-      })();
-    }
-  }, [competitorDados, competitorRiskLoaded]);
-
-  const sortedDados = useMemo(() => {
-    return [...dados].sort((a, b) => {
-      const riskA = riskMap[a.metrics.asn]?.risk_score ?? 0;
-      const riskB = riskMap[b.metrics.asn]?.risk_score ?? 0;
-      return riskB - riskA;
-    });
-  }, [dados, riskMap]);
-
-  const sortedCompetitorDados = useMemo(() => {
-    return [...competitorDados].sort((a, b) => {
-      const riskA = competitorRiskMap[a.metrics.asn]?.risk_score ?? 0;
-      const riskB = competitorRiskMap[b.metrics.asn]?.risk_score ?? 0;
-      return riskB - riskA;
-    });
-  }, [competitorDados, competitorRiskMap]);
-
-  const { countHigh, countMedium, countLow } = useMemo(() => {
-    let high = 0, medium = 0, low = 0;
-    for (const d of dados) {
-      const label = riskMap[d.metrics.asn]?.risk_label;
-      if (label === "HIGH") high++;
-      else if (label === "MEDIUM") medium++;
-      else if (label === "LOW") low++;
-    }
-    return { countHigh: high, countMedium: medium, countLow: low };
-  }, [dados, riskMap]);
 
   const handleAdicionarAsn = async () => {
     const valor = novoAsn.trim();
@@ -281,7 +199,6 @@ const Index = () => {
 
   const tabs = [
     { value: "visao-geral", label: "Visão Geral", resource: "tab:visao-geral" },
-    { value: "concorrentes", label: "Concorrentes", resource: "tab:concorrentes" },
     { value: "eventos-alertas", label: "Eventos/Alertas", resource: "tab:eventos-alertas" },
     { value: "inteligencia-ti", label: "Inteligência TI", resource: "tab:inteligencia-ti" },
     { value: "wanguard", label: "Wanguard", resource: "tab:wanguard" },
@@ -292,8 +209,7 @@ const Index = () => {
   const defaultTab = visibleTabs[0]?.value ?? "visao-geral";
 
   const tabDescriptions: Record<string, string> = {
-    "visao-geral": "Visão consolidada de todos os ASNs que você monitora, com o nível de risco atual, tendências recentes e principais destaques de segurança do ambiente.",
-    "concorrentes": "Monitoramento dedicado dos ASNs estratégicos de concorrentes, com comparação de risco, volume de eventos e detecção de possíveis ataques simultâneos.",
+    "visao-geral": "Visão consolidada de todos os ASNs que você monitora, com correlação entre ataques próprios e concorrentes para distinguir alvo direto de evento regional.",
     "eventos-alertas": "Linha do tempo dos principais eventos e alertas de segurança, destacando períodos de ataque, picos de atividade suspeita e correlações relevantes.",
     "inteligencia-ti": "Métricas de reputação de IP e ASN com base em fontes externas (AbuseIPDB, GreyNoise), detalhando score de abuso, IPs críticos e indicadores de ameaça.",
     "wanguard": "Visão consolidada dos ataques detectados pelo Wanguard, com análise de níveis, periodicidade, volume e blocos mais visados, para identificação de padrões de ataque.",
@@ -398,136 +314,26 @@ const Index = () => {
 
                 <CorrelationTimeline />
 
-                {riskLoaded && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                  >
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Ordenado por risco estimado (decrescente, últimas 2h)
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2 text-xs mb-3">
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-muted text-muted-foreground">
-                        <span className="w-2 h-2 rounded-full bg-neon-red" />
-                        Risco alto: {countHigh}
-                      </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-muted text-muted-foreground">
-                        <span className="w-2 h-2 rounded-full bg-orange-400" />
-                        Risco médio: {countMedium}
-                      </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-muted text-muted-foreground">
-                        <span className="w-2 h-2 rounded-full bg-neon-yellow" />
-                        Risco baixo: {countLow}
-                      </span>
-                    </div>
-                  </motion.div>
-                )}
-
-                {sortedDados.length === 0 ? (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="text-center py-16"
-                  >
-                    <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity }}>
-                      <SearchX className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                    </motion.div>
-                    <p className="text-muted-foreground">Nenhum ASN monitorado ainda.</p>
-                    <p className="text-xs text-muted-foreground mt-1">Use "Adicionar ASN" para começar.</p>
-                  </motion.div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
-                    {sortedDados.map((d, i) => (
-                      <motion.div
-                        key={d.metrics.asn}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.35, delay: i * 0.08 }}
-                        layout
-                      >
-                        <ASNCard
-                          dados={d}
-                          externalRiskData={riskMap[d.metrics.asn] ?? null}
-                          highlightHigh
-                          onRemoverAsn={async (asn) => {
-                            try { await removerAsn(asn); toast.success(`${asn} removido`); } catch { toast.error("Erro ao remover ASN"); }
-                          }}
-                        />
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
-
-                <InstabilityRanking dados={dados} />
-                <AsnHistoryChart asns={dados.map(d => d.metrics.asn)} />
-              </motion.div>
-            </TabsContent>
-          )}
-
-          {/* ═══ ABA: CONCORRENTES ═══ */}
-          {permissions.hasAccess("tab:concorrentes") && (
-            <TabsContent value="concorrentes" className="mt-0">
-              <motion.div
-                key="concorrentes"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3 }}
-                className="space-y-4 md:space-y-6"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <h2 className="text-base md:text-lg font-semibold text-foreground">ASNs Concorrentes</h2>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Monitoramento focado: AS268538 (Conecta Network), AS267530 (TJ Telecom), AS268726 (TOPNET)
-                    </p>
-                  </div>
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.98 }}>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1.5"
-                      onClick={async () => {
-                        try { await atualizarConcorrentes(); toast.success("Concorrentes atualizados"); } catch { toast.error("Erro ao atualizar"); }
-                      }}
-                    >
-                      <RefreshCw className="h-4 w-4" /> Atualizar
-                    </Button>
-                  </motion.div>
-                </div>
-
-                {competitorCarregando ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <p className="animate-pulse">Carregando dados dos concorrentes...</p>
-                  </div>
-                ) : sortedCompetitorDados.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <p>Nenhum dado de concorrente disponível no momento.</p>
-                    <p className="text-xs mt-1">Os dados serão carregados automaticamente.</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
-                      {sortedCompetitorDados.map((d, i) => (
-                        <motion.div
+                {dados.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {dados.map((d) => {
+                      const status = d.metrics.status;
+                      const dotClass = status === "UNDER_ATTACK" ? "bg-neon-red" : status === "WARNING" ? "bg-neon-yellow" : "bg-neon-green";
+                      return (
+                        <span
                           key={d.metrics.asn}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ duration: 0.35, delay: i * 0.08 }}
-                          layout
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-muted text-xs text-muted-foreground"
                         >
-                          <ASNCard
-                            dados={d}
-                            externalRiskData={competitorRiskMap[d.metrics.asn] ?? null}
-                            highlightHigh
-                            onRemoverAsn={() => {}}
-                          />
-                        </motion.div>
-                      ))}
-                    </div>
-                    <AsnHistoryChart asns={sortedCompetitorDados.map(d => d.metrics.asn)} />
-                  </>
+                          <span className={cn("w-1.5 h-1.5 rounded-full", dotClass)} />
+                          <span className="font-mono">{d.metrics.asn}</span>
+                          <span className="text-muted-foreground/70">{d.metrics.name}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
                 )}
+
+                <AsnHistoryChart asns={dados.map(d => d.metrics.asn)} />
               </motion.div>
             </TabsContent>
           )}

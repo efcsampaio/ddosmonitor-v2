@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { ShieldAlert, Radio } from "lucide-react";
+import { IncidentReport } from "@/components/IncidentReport";
 
 const OWN_ASNS = [
   { asn: "AS267458", name: "K2 Network" },
@@ -60,6 +61,7 @@ export function CorrelationTimeline() {
   const [episodes, setEpisodes] = useState<OwnEpisode[]>([]);
   const [competitorIncidents, setCompetitorIncidents] = useState<CompetitorIncident[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedEpisode, setSelectedEpisode] = useState<OwnEpisode | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -164,10 +166,12 @@ export function CorrelationTimeline() {
                     const right = pct(new Date(e.end_time), domainStart, domainEnd);
                     const width = Math.max(right - left, 0.3);
                     return (
-                      <div
+                      <button
                         key={i}
+                        type="button"
+                        onClick={() => setSelectedEpisode(e)}
                         title={`${formatTime(e.start_time)} · ${formatMbps(e.peak_bps)} · ${e.correlated ? "correlacionado" : "isolado"}`}
-                        className={`absolute top-0 h-full rounded-sm ${e.correlated ? "bg-neon-yellow" : "bg-neon-red"}`}
+                        className={`absolute top-0 h-full rounded-sm cursor-pointer hover:brightness-125 ${e.correlated ? "bg-neon-yellow" : "bg-neon-red"}`}
                         style={{ left: `${left}%`, width: `${width}%` }}
                       />
                     );
@@ -226,7 +230,13 @@ export function CorrelationTimeline() {
               {episodes.slice(0, 12).map((e, i) => {
                 const own = OWN_ASNS.find((o) => o.asn === e.asn);
                 return (
-                  <div key={i} className="py-2.5 flex items-center gap-3">
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setSelectedEpisode(e)}
+                    className="w-full text-left py-2.5 flex items-center gap-3 hover:bg-muted/40 rounded-lg px-2 -mx-2 transition-colors"
+                  >
+
                     <span
                       className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
                         e.correlated
@@ -244,7 +254,7 @@ export function CorrelationTimeline() {
                       </p>
                     </div>
                     <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap">{formatTime(e.start_time)}</span>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -288,6 +298,8 @@ export function CorrelationTimeline() {
           </div>
         </Card>
       </div>
+
+      <IncidentReport episode={selectedEpisode} onClose={() => setSelectedEpisode(null)} />
     </div>
   );
 }
