@@ -81,7 +81,21 @@
   .clock { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); text-align: right; }
   .clock .time { color: var(--text-secondary); }
 
+  .tabnav { display: flex; gap: 4px; padding: 10px 24px 0; border-bottom: 1px solid var(--border); max-width: 1240px; margin: 0 auto; }
+  .tab-btn {
+    background: none; border: none; color: var(--text-secondary); font-size: 13.5px; font-weight: 550;
+    padding: 10px 14px; border-radius: 8px 8px 0 0; border-bottom: 2px solid transparent;
+  }
+  .tab-btn:hover { color: var(--text-primary); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
   main { max-width: 1240px; margin: 0 auto; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+
+  .billing-bar-wrap { display: flex; align-items: flex-end; gap: 2px; height: 300px; padding: 12px 44px 30px 44px; position: relative; min-width: 900px; }
+  .billing-bar { flex: 1; min-width: 4px; border-radius: 2px 2px 0 0; cursor: pointer; }
+  .billing-ylabel { position: absolute; left: 0; font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+  .billing-gridline { position: absolute; left: 40px; right: 4px; height: 1px; background: var(--border); }
+  .billing-xlabel { position: absolute; bottom: 8px; font-size: 9.5px; color: var(--text-muted); font-family: var(--font-mono); transform: translateX(-50%); }
 
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
   .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
@@ -224,7 +238,12 @@
     </div>
   </div>
 
-  <main>
+  <nav class="tabnav">
+    <button type="button" class="tab-btn active" data-view="overview">Visão Geral</button>
+    <button type="button" class="tab-btn" data-view="billing">Faturamento</button>
+  </nav>
+
+  <main id="view-overview">
     <div id="stats-row" class="stats"></div>
 
     <div class="card">
@@ -256,6 +275,40 @@
         <h2>Concorrentes agora</h2>
         <p class="card-sub">Apenas sinal externo — sem visibilidade interna</p>
         <div id="competitor-panel"></div>
+      </div>
+    </div>
+  </main>
+
+  <main id="view-billing" style="display:none">
+    <div id="billing-stats" class="stats"></div>
+    <div class="card">
+      <div style="display:flex;align-items:baseline;justify-content:space-between">
+        <h2>Picos de banda por dia — AS267458 (K2 Network)</h2>
+        <span class="muted-small">últimos 90 dias</span>
+      </div>
+      <p class="card-sub">Pico de tráfego (bps) por dia, escala logarítmica. Use pra cruzar com o ciclo de cobrança burstable dos fornecedores de mitigação.</p>
+      <div class="legend">
+        <div class="item"><span class="swatch" style="background:var(--baseline)"></span>Baseline (&lt; 2 Gbps)</div>
+        <div class="item"><span class="swatch" style="background:var(--status-warning)"></span>Elevado (2–10 Gbps)</div>
+        <div class="item"><span class="swatch" style="background:var(--status-critical)"></span>Severo (&gt; 10 Gbps)</div>
+      </div>
+      <div id="billing-chart" style="overflow-x:auto"></div>
+    </div>
+    <div class="card">
+      <h2>Tabela completa</h2>
+      <p class="card-sub" id="billing-table-sub"></p>
+      <div style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;font-family:var(--font-mono)">
+          <thead>
+            <tr style="position:sticky;top:0;background:var(--surface)">
+              <th style="text-align:left;padding:8px 10px;font-family:var(--font-sans);font-size:11px;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border)">Dia</th>
+              <th style="text-align:right;padding:8px 10px;font-family:var(--font-sans);font-size:11px;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border)">Pico (Gbps)</th>
+              <th style="text-align:right;padding:8px 10px;font-family:var(--font-sans);font-size:11px;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border)">Pico (Mpps)</th>
+              <th style="text-align:right;padding:8px 10px;font-family:var(--font-sans);font-size:11px;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border)">Janelas sob ataque</th>
+            </tr>
+          </thead>
+          <tbody id="billing-tbody"></tbody>
+        </table>
       </div>
     </div>
   </main>
@@ -606,6 +659,119 @@ function closeReport() {
 }
 $('report-close').addEventListener('click', closeReport);
 $('overlay').addEventListener('click', closeReport);
+
+// ---- tabs ----
+let billingLoaded = false;
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const view = btn.dataset.view;
+    $('view-overview').style.display = view === 'overview' ? 'flex' : 'none';
+    $('view-billing').style.display = view === 'billing' ? 'flex' : 'none';
+    if (view === 'billing' && !billingLoaded) {
+      billingLoaded = true;
+      loadBilling();
+    }
+  });
+});
+
+// ---- billing / burstable ----
+function billingTier(gbps) {
+  if (gbps == null) return null;
+  if (gbps > 10) return 'critical';
+  if (gbps >= 2) return 'warning';
+  return 'baseline';
+}
+const billingTierColor = { critical: 'var(--status-critical)', warning: 'var(--status-warning)', baseline: 'var(--baseline)' };
+
+async function loadBilling() {
+  $('billing-table-sub').textContent = 'Carregando...';
+  const { data, error } = await supabase
+    .from('v_daily_bandwidth_peaks')
+    .select('asn,day,peak_bps,peak_pps,janelas_sob_ataque,max_ataques_simultaneos_30m')
+    .eq('asn', 'AS267458')
+    .order('day', { ascending: true })
+    .limit(90);
+
+  if (error || !data) {
+    $('billing-table-sub').textContent = 'Erro ao carregar dados.';
+    return;
+  }
+
+  const withGbps = data.map(d => ({
+    ...d,
+    gbps: d.peak_bps != null ? Number(d.peak_bps) / 1e9 : null,
+    mpps: d.peak_pps != null ? Number(d.peak_pps) / 1e6 : null,
+  }));
+
+  const valid = withGbps.filter(d => d.gbps != null);
+  const maxDay = valid.length ? valid.reduce((a, b) => (b.gbps > a.gbps ? b : a)) : null;
+  const critical = valid.filter(d => d.gbps > 10);
+  const warning = valid.filter(d => d.gbps >= 2 && d.gbps <= 10);
+
+  $('billing-stats').innerHTML = `
+    <div class="stat">
+      <div class="label">Maior pico registrado</div>
+      <div class="value critical">${maxDay ? maxDay.gbps.toFixed(1) + ' Gbps' : '—'}</div>
+      <div class="hint2">${maxDay ? fmtTime(maxDay.day) : ''}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Dias severos (&gt;10 Gbps)</div>
+      <div class="value critical">${critical.length}</div>
+      <div class="hint2">de ${valid.length} dias com coleta</div>
+    </div>
+    <div class="stat">
+      <div class="label">Dias elevados (2–10 Gbps)</div>
+      <div class="value warning">${warning.length}</div>
+      <div class="hint2">possível burst cobrável</div>
+    </div>
+  `;
+
+  if (maxDay) {
+    const logMin = Math.log10(0.02);
+    const logMax = Math.log10(maxDay.gbps * 1.08);
+    const yFor = (gbps) => {
+      const v = Math.max(gbps, 0.02);
+      const t = (Math.log10(v) - logMin) / (logMax - logMin);
+      return 100 - t * 100;
+    };
+
+    const gridLines = [0.1, 1, 10, 100].filter(v => Math.log10(v) >= logMin && Math.log10(v) <= logMax).map(v => {
+      const y = yFor(v);
+      const label = v >= 1 ? v + 'G' : (v * 1000) + 'M';
+      return `<div class="billing-gridline" style="top:${y}%"></div><div class="billing-ylabel" style="top:calc(${y}% - 6px)">${label}</div>`;
+    }).join('');
+
+    const bars = withGbps.map((d, i) => {
+      if (d.gbps == null) return '<div class="billing-bar" style="height:0"></div>';
+      const y = yFor(d.gbps);
+      const h = 100 - y;
+      const tier = billingTier(d.gbps);
+      const showLabel = i === 0 || i === withGbps.length - 1 || d.day.slice(8, 10) === '01';
+      const [yy, mm, dd] = d.day.split('-');
+      const label = showLabel ? `<div class="billing-xlabel" style="left:${(i / (withGbps.length - 1)) * 100}%">${dd}/${mm}</div>` : '';
+      return `<div class="billing-bar" style="height:${h}%;background:${billingTierColor[tier]}" title="${dd}/${mm}/${yy}: ${d.gbps.toFixed(2)} Gbps">${label}</div>`;
+    }).join('');
+
+    $('billing-chart').innerHTML = `<div class="billing-bar-wrap">${gridLines}${bars}</div>`;
+  }
+
+  $('billing-table-sub').textContent = `${withGbps.length} dias · ordenado do mais recente ao mais antigo`;
+  $('billing-tbody').innerHTML = withGbps.slice().reverse().map(d => {
+    const tier = billingTier(d.gbps);
+    const [yy, mm, dd] = d.day.split('-');
+    const gbpsCell = d.gbps == null
+      ? '<span style="color:var(--text-muted)">sem coleta</span>'
+      : `<span style="color:${billingTierColor[tier]};font-weight:600">${d.gbps.toFixed(2)}</span>`;
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:7px 10px;color:var(--text-primary)">${dd}/${mm}/${yy}</td>
+      <td style="padding:7px 10px;text-align:right">${gbpsCell}</td>
+      <td style="padding:7px 10px;text-align:right;color:var(--text-secondary)">${d.mpps != null ? d.mpps.toFixed(2) : '—'}</td>
+      <td style="padding:7px 10px;text-align:right;color:var(--text-secondary)">${d.janelas_sob_ataque}</td>
+    </tr>`;
+  }).join('');
+}
 
 // ---- boot ----
 checkSession();
