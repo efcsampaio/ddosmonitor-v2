@@ -507,6 +507,66 @@ export type Database = {
         }
         Relationships: []
       }
+      v_own_attack_episodes: {
+        Row: {
+          asn: string | null
+          start_time: string | null
+          end_time: string | null
+          peak_bps: number | null
+          peak_pps: number | null
+          sample_count: number | null
+        }
+        Insert: {
+          asn?: never
+          start_time?: never
+          end_time?: never
+          peak_bps?: never
+          peak_pps?: never
+          sample_count?: never
+        }
+        Update: {
+          asn?: never
+          start_time?: never
+          end_time?: never
+          peak_bps?: never
+          peak_pps?: never
+          sample_count?: never
+        }
+        Relationships: []
+      }
+      v_incident_correlation: {
+        Row: {
+          asn: string | null
+          start_time: string | null
+          end_time: string | null
+          peak_bps: number | null
+          peak_pps: number | null
+          sample_count: number | null
+          correlated: boolean | null
+          correlated_with: string[] | null
+        }
+        Insert: {
+          asn?: never
+          start_time?: never
+          end_time?: never
+          peak_bps?: never
+          peak_pps?: never
+          sample_count?: never
+          correlated?: never
+          correlated_with?: never
+        }
+        Update: {
+          asn?: never
+          start_time?: never
+          end_time?: never
+          peak_bps?: never
+          peak_pps?: never
+          sample_count?: never
+          correlated?: never
+          correlated_with?: never
+        }
+        Relationships: []
+      }
     }
     Functions: {
       has_role: {

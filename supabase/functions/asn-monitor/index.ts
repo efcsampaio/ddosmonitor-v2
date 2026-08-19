@@ -108,6 +108,16 @@ const asnNames: Record<string, string> = { ...ASN_NAME_OVERRIDES };
 const visibilityHistory: Record<string, number[]> = {};
 const neighbourHistory: Record<string, number[]> = {};
 const prefixHistory: Record<string, number[]> = {};
+
+// Fornecedores de mitigação DDoS da K2 (aparecem como upstream de AS267458).
+// Marca mudanças de presença desses ASNs no caminho BGP — não é evidência de
+// nada, é só visibilidade adicional pra revisão manual quando o caminho de
+// rede muda ao redor de um incidente.
+const MITIGATION_VENDOR_ASNS: Record<number, string> = {
+  268624: "Gamers Club Ltda (Rocket)",
+  273478: "Sage Networks",
+};
+const vendorNeighbourHistory: Record<string, Set<number>> = {};
 // Cache of user ASNs to survive DB outages
 const userAsnCache: Record<string, { asns: string[]; ts: number }> = {};
 const allAsnsCache: { asns: string[]; ts: number } = { asns: [], ts: 0 };
@@ -763,6 +773,26 @@ async function updateAsnMetrics(asn: string): Promise<AsnMetrics> {
   trackHistory(neighbourHistory, asn, neighboursList.length);
   trackHistory(prefixHistory, asn, prefixList.length || prefixCount);
 
+  // Detecta entrada/saída dos fornecedores de mitigação no caminho BGP
+  const currentVendorAsns = new Set(
+    neighboursList.map((n) => n.asn).filter((a) => MITIGATION_VENDOR_ASNS[a] !== undefined)
+  );
+  const previousVendorAsns = vendorNeighbourHistory[asn];
+  const vendorChangeSignals: string[] = [];
+  if (previousVendorAsns) {
+    for (const a of currentVendorAsns) {
+      if (!previousVendorAsns.has(a)) {
+        vendorChangeSignals.push(`🔍 Fornecedor de mitigação entrou no caminho BGP: AS${a} (${MITIGATION_VENDOR_ASNS[a]})`);
+      }
+    }
+    for (const a of previousVendorAsns) {
+      if (!currentVendorAsns.has(a)) {
+        vendorChangeSignals.push(`🔍 Fornecedor de mitigação saiu do caminho BGP: AS${a} (${MITIGATION_VENDOR_ASNS[a]})`);
+      }
+    }
+  }
+  vendorNeighbourHistory[asn] = currentVendorAsns;
+
   // RIPE Atlas active probing (non-blocking, runs in parallel with security checks)
   const atlasProbe = await fetchAtlasProbe(prefixList).catch(() => null);
 
@@ -787,12 +817,18 @@ async function updateAsnMetrics(asn: string): Promise<AsnMetrics> {
   if (criticalAlerts.length > 0 && finalStatus === "HEALTHY") {
     finalStatus = "WARNING";
   }
+  // Garante que mudança de fornecedor de mitigação no caminho BGP vira
+  // incidente registrado (visibilidade pra revisão manual), mesmo que
+  // nenhum outro sinal tenha disparado.
+  if (vendorChangeSignals.length > 0 && finalStatus === "HEALTHY") {
+    finalStatus = "WARNING";
+  }
   if (criticalAlerts.length >= 2 && finalStatus !== "UNDER_ATTACK") {
     finalStatus = "UNDER_ATTACK";
   }
 
   // Add security signals to detection signals
-  const allSignals = [...signals];
+  const allSignals = [...signals, ...vendorChangeSignals];
   for (const alert of securityAlerts) {
     const icon = alert.severity === "critical" ? "🔴" : alert.severity === "warning" ? "🟡" : "🔵";
     allSignals.push(`${icon} [${alert.type.toUpperCase()}] ${alert.description}`);

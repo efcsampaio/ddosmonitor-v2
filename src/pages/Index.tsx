@@ -10,6 +10,7 @@ import { AsnTiReputation } from "@/components/AsnTiReputation";
 import { AlertsHistory } from "@/components/AlertsHistory";
 import { WanguardTab } from "@/components/WanguardTab";
 import { HighVolumeAlertsCard } from "@/components/HighVolumeAlertsCard";
+import { CorrelationTimeline } from "@/components/CorrelationTimeline";
 import { useWanguardAttacks, type PeriodOption } from "@/hooks/useWanguardAttacks";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { motion, AnimatePresence } from "motion/react";
@@ -394,6 +395,8 @@ const Index = () => {
                     )}
                   </div>
                 </div>
+
+                <CorrelationTimeline />
 
                 {riskLoaded && (
                   <motion.div

@@ -277,17 +277,22 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log("Fetching training data from AS267458...");
+    // Treina com o ground truth Wanguard dos ASNs PRÓPRIOS da K2 (únicos com
+    // status real de ataque confirmado) — antes só AS267458; AS266953 (Argo)
+    // passou a ter dados reais também depois que generate-dataset passou a
+    // cobrir os dois.
+    const OWN_ASNS = ["AS267458", "AS266953"];
+    console.log(`Fetching training data from ${OWN_ASNS.join(", ")}...`);
     const { data: trainingData, error: trainError } = await supabase
       .from("v_training_dataset")
       .select("is_attack, strong_count, qrator_count, rpki_count, ripestat_count, bgp_count, has_combo_strong, ti_ips_total, ti_abuse_avg_score, ti_abuse_high_ratio, gn_noise_ratio, gn_malicious_ratio, gn_riot_ratio, ti_combined_score")
-      .eq("asn", "AS267458")
+      .in("asn", OWN_ASNS)
       .limit(5000);
 
     if (trainError) throw new Error(`Training data error: ${trainError.message}`);
     if (!trainingData || trainingData.length === 0) {
       return new Response(
-        JSON.stringify({ error: "No training data available for AS267458" }),
+        JSON.stringify({ error: `No training data available for ${OWN_ASNS.join(", ")}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -484,7 +489,7 @@ Deno.serve(async (req) => {
         period: { start: startDate, end: endDate },
         window_minutes: windowMinutes,
         model: {
-          trained_on: "AS267458",
+          trained_on: OWN_ASNS,
           training_samples: trainingData.length,
           weights,
           features_used: ["strong_count", "qrator_count", "rpki_count", "ripestat_count", "bgp_count", "has_combo_strong", "ti_abuse_avg_score", "ti_abuse_high_ratio", "ti_combined_score"],
