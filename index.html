@@ -691,13 +691,14 @@ async function loadBilling() {
     .from('v_daily_bandwidth_peaks')
     .select('asn,day,peak_bps,peak_pps,janelas_sob_ataque,max_ataques_simultaneos_30m')
     .eq('asn', 'AS267458')
-    .order('day', { ascending: true })
+    .order('day', { ascending: false })
     .limit(90);
 
   if (error || !data) {
     $('billing-table-sub').textContent = 'Erro ao carregar dados.';
     return;
   }
+  data.reverse(); // volta pra ordem cronológica (mais antigo -> mais recente) pro gráfico
 
   const withGbps = data.map(d => ({
     ...d,
