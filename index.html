@@ -244,6 +244,11 @@
   </nav>
 
   <main id="view-overview">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <h2 style="font-size:15px;margin:0;font-weight:600">ASNs monitorados</h2>
+      <button type="button" class="btn-outline" id="add-competitor-btn">+ Adicionar concorrente</button>
+    </div>
+
     <div id="stats-row" class="stats"></div>
 
     <div class="card">
@@ -320,6 +325,22 @@
   <div id="report-body"></div>
 </div>
 
+<div id="add-asn-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;align-items:center;justify-content:center">
+  <div class="login-card" style="max-width:340px;width:90%">
+    <h1 style="font-size:16px;text-align:left">Adicionar ASN concorrente</h1>
+    <p class="sub" style="text-align:left;margin-bottom:18px">O nome é buscado automaticamente pelo número do ASN.</p>
+    <form id="add-asn-form">
+      <div class="field">
+        <label for="add-asn-input">Número do ASN</label>
+        <input id="add-asn-input" type="text" placeholder="Ex: 268538 ou AS268538" required />
+      </div>
+      <button type="submit" class="btn" id="add-asn-submit">Adicionar</button>
+      <button type="button" class="btn-outline" id="add-asn-cancel" style="width:100%;margin-top:8px">Cancelar</button>
+      <p class="error-msg" id="add-asn-error" style="display:none"></p>
+    </form>
+  </div>
+</div>
+
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -327,16 +348,25 @@ const SUPABASE_URL = 'https://edhzzodqqvkepqbnroyz.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVkaHp6b2RxcXZrZXBxYm5yb3l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxOTIwNDksImV4cCI6MjEwMDc2ODA0OX0.cSr9OjhmlcLStQ57lSQ8H5C0ZBZT552lqQjg-QDiEcs';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const OWN_ASNS = [
+const OWN_ASN_CODES = ['AS267458', 'AS266953'];
+// Valores default (usados até a primeira busca no banco terminar)
+let OWN_ASNS = [
   { asn: 'AS267458', name: 'K2 Network' },
   { asn: 'AS266953', name: 'Argo Telecom' },
 ];
-const COMPETITOR_ASNS = [
+let COMPETITOR_ASNS = [
   { asn: 'AS268538', name: 'Conecta Network' },
   { asn: 'AS267530', name: 'TJ Telecom' },
   { asn: 'AS268726', name: 'TOPNET' },
 ];
 const WINDOW_HOURS = 7 * 24;
+
+async function loadMonitoredAsnLists() {
+  const { data, error } = await supabase.from('monitored_asns').select('asn,name').order('created_at', { ascending: true });
+  if (error || !data || data.length === 0) return;
+  OWN_ASNS = data.filter(d => OWN_ASN_CODES.includes(d.asn)).map(d => ({ asn: d.asn, name: d.name || d.asn }));
+  COMPETITOR_ASNS = data.filter(d => !OWN_ASN_CODES.includes(d.asn)).map(d => ({ asn: d.asn, name: d.name || d.asn }));
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -429,6 +459,7 @@ let episodesData = [];
 let competitorIncidentsData = [];
 
 async function loadDashboard() {
+  await loadMonitoredAsnLists();
   const since = new Date(Date.now() - WINDOW_HOURS * 3600 * 1000).toISOString();
 
   const [episodesRes, compRes] = await Promise.all([
@@ -659,6 +690,50 @@ function closeReport() {
 }
 $('report-close').addEventListener('click', closeReport);
 $('overlay').addEventListener('click', closeReport);
+
+// ---- add competitor ASN ----
+$('add-competitor-btn').addEventListener('click', () => {
+  $('add-asn-input').value = '';
+  $('add-asn-error').style.display = 'none';
+  $('add-asn-overlay').style.display = 'flex';
+  $('add-asn-input').focus();
+});
+$('add-asn-cancel').addEventListener('click', () => { $('add-asn-overlay').style.display = 'none'; });
+$('add-asn-overlay').addEventListener('click', (e) => { if (e.target.id === 'add-asn-overlay') $('add-asn-overlay').style.display = 'none'; });
+
+$('add-asn-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = $('add-asn-submit');
+  const errEl = $('add-asn-error');
+  errEl.style.display = 'none';
+  const valor = $('add-asn-input').value.trim();
+  if (!valor) return;
+  btn.disabled = true;
+  btn.textContent = 'Adicionando...';
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/asn-monitor/add-asn`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ asn: valor }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Erro ao adicionar ASN');
+    $('add-asn-overlay').style.display = 'none';
+    billingLoaded = false;
+    await loadDashboard();
+  } catch (err) {
+    errEl.textContent = err.message || 'Erro ao adicionar ASN.';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Adicionar';
+  }
+});
 
 // ---- tabs ----
 let billingLoaded = false;
