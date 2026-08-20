@@ -737,14 +737,16 @@ $('add-asn-form').addEventListener('submit', async (e) => {
 
 // ---- tabs ----
 let billingLoaded = false;
+let currentView = 'overview';
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const view = btn.dataset.view;
+    currentView = view;
     $('view-overview').style.display = view === 'overview' ? 'flex' : 'none';
     $('view-billing').style.display = view === 'billing' ? 'flex' : 'none';
-    if (view === 'billing' && !billingLoaded) {
+    if (view === 'billing') {
       billingLoaded = true;
       loadBilling();
     }
@@ -851,7 +853,12 @@ async function loadBilling() {
 
 // ---- boot ----
 checkSession();
-setInterval(loadDashboard, 60000);
+setInterval(() => {
+  loadDashboard();
+  // Faturamento não faz parte do loadDashboard — antes só carregava uma vez
+  // no primeiro clique na aba e ficava congelado depois disso.
+  if (currentView === 'billing') loadBilling();
+}, 60000);
 </script>
 </body>
 </html>
